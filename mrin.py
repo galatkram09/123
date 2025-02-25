@@ -8,9 +8,13 @@ import datetime
 import calendar
 import subprocess
 import threading
+import asyncio
 import logging
+from threading import Thread
 from telebot import types
 from dateutil.relativedelta import relativedelta
+import subprocess
+
 
 # Insert your Telegram bot token here
 bot = telebot.TeleBot('7557644714:AAH9zkXYj4BbRZMC3O2sCbADlfa6FJBoXEQ')
@@ -27,12 +31,15 @@ BOT_LINK = "@NEERAJ_PAPA_BOt"
 escaped_bot_link = BOT_LINK.replace('_', '\\_')
 
 # Per key cost for resellers
-KEY_COST = {"1hour": 30, "1day": 150, "7days": 450, "1month": 1100}
+KEY_COST = {"1hour": 30, "5hours": 80, "1day": 120, "7days": 600, "1month": 1500}
 
 # In-memory storage
 users = {}
 keys = {}
 last_attack_time = {}
+
+# List of blocked ports
+blocked_ports = [8700, 20000, 443, 17500, 9031, 20002, 20001, 10000, 10001, 10002]
 
 # Read users and keys from files initially
 def load_data():
@@ -46,6 +53,7 @@ def read_users():
             return json.load(file)
     except FileNotFoundError:
         return {}
+
 
 def save_users():
     with open(USER_FILE, "w") as file:
@@ -62,10 +70,10 @@ def save_keys():
     with open(KEY_FILE, "w") as file:
         json.dump(keys, file)
 
-def create_random_key(length=18):
+def create_random_key(length=15):
     characters = string.ascii_letters + string.digits
     random_key = ''.join(random.choice(characters) for _ in range(length))
-    custom_key = f"{random_key}"
+    custom_key = f"VIP-MoY-{random_key}"
     return custom_key
 
 def add_time_to_current_date(years=0, months=0, days=0, hours=0, minutes=0, seconds=0):
@@ -78,7 +86,19 @@ def log_command(user_id, target, port, time):
     username = user_info.username if user_info.username else f"UserID: {user_id}"
 
     with open(LOG_FILE, "a") as file:
-        file.write(f"Username: {username}\nTarget: {target}\nPort: {port}\nTime: {time}\n\n")
+        file.write(f"")
+        
+def record_command_logs(user_id, command, target=None, port=None, time=None):
+    log_entry = f"| ➖ 𝗨𝘀𝗲𝗿𝗡𝗮𝗺𝗲 : {user_id}\n | ➖ 𝗧𝗶𝗺𝗲 : {datetime.datetime.now()}\n"
+    if target:
+        log_entry += f" | ➖ 𝗧𝗮𝗿𝗴𝗲𝘁 𝗜𝗣 : {target}\n"
+    if port:
+        log_entry += f" | ➖ 𝗧𝗮𝗿𝗴𝗲𝘁 𝗣𝗢𝗥𝗧 : {port}\n"
+    if time:
+        log_entry += f" | ➖ 𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻 : {time}\n\n"
+
+    with open(LOG_FILE, "a") as file:
+        file.write(log_entry + "\n")
 
 def clear_logs():
     try:
@@ -91,18 +111,6 @@ def clear_logs():
     except FileNotFoundError:
         return "No data found."
         
-def record_command_logs(user_id, command, target=None, port=None, time=None):
-    log_entry = f"| UserID: {user_id} | Time: {datetime.datetime.now()} | Command: {command}"
-    if target:
-        log_entry += f" | Target: {target}"
-    if port:
-        log_entry += f" | Port: {port}"
-    if time:
-        log_entry += f" | Time: {time}"
-
-    with open(LOG_FILE, "a") as file:
-        file.write(log_entry + "\n")
-
 # Load resellers and their balances from the JSON file
 def load_resellers():
     try:
@@ -126,12 +134,12 @@ def broadcast_message(message):
     user_id = str(message.chat.id)
 
     if user_id not in admin_id:
-        bot.reply_to(message, "‼️ 𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗲𝗥 𝗖𝗮𝗻 𝗿𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱 ‼️")
+        bot.reply_to(message, "‼️ *𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗲𝗥 𝗖𝗮𝗻 𝗿𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱* ‼️", parse_mode='Markdown')
         return
 
     command_parts = message.text.split(' ', 1)
     if len(command_parts) < 2:
-        bot.reply_to(message, "Usage: /broadcast <message>")
+        bot.reply_to(message, "Usage: /broadcast <message>", parse_mode='Markdown')
         return
 
     broadcast_msg = command_parts[1]
@@ -140,12 +148,12 @@ def broadcast_message(message):
     sent_count = 0
     for user in all_users:
         try:
-            bot.send_message(user, f"📢 *Broadcast Message :*\n\n{broadcast_msg}", parse_mode='Markdown')
+            bot.send_message(user, f"📢 *𝗕𝗿𝗼𝗮𝗱𝗰𝗮𝘀𝘁 𝗠𝗲𝘀𝘀𝗮𝗴𝗲 :*\n\n*{broadcast_msg}*", parse_mode='Markdown')
             sent_count += 1
         except Exception as e:
             print(f"{e}")
 
-    bot.reply_to(message, f"➖ Broadcast sent successfully to {sent_count} users ! ✅")
+    bot.reply_to(message, f"➖ *𝗕𝗿𝗼𝗮𝗱𝗰𝗮𝘀𝘁 𝘀𝗲𝗻𝘁 𝘀𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝘁𝗼 {sent_count} 𝘂𝘀𝗲𝗿𝘀* ! ✅", parse_mode='Markdown')
 
 
 # Admin command to add a reseller
@@ -154,69 +162,29 @@ def add_reseller(message):
     user_id = str(message.chat.id)
     
     if user_id not in admin_id:
-        bot.reply_to(message, "‼️ 𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗲𝗥 𝗖𝗮𝗻 𝗿𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱 ‼️")
+        bot.reply_to(message, "‼️ *𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗲𝗥 𝗖𝗮𝗻 𝗿𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱* ‼️", parse_mode='Markdown')
         return
 
     # Command syntax: /addreseller <user_id> <initial_balance>
     command = message.text.split()
     if len(command) != 3:
-        bot.reply_to(message, "➖ 𝗨𝘀𝗮𝗴𝗲: /𝗮𝗱𝗱𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 <𝘂𝘀𝗲𝗿_𝗶𝗱> <𝗯𝗮𝗹𝗮𝗻𝗰𝗲>")
+        bot.reply_to(message, "➖ 𝗨𝘀𝗮𝗴𝗲: /𝗮𝗱𝗱𝗿𝗲𝘀𝗲𝗹𝗹𝗲𝗿 <𝘂𝘀𝗲𝗿_𝗶𝗱> <𝗯𝗮𝗹𝗮𝗻𝗰𝗲>")
         return
 
     reseller_id = command[1]
     try:
         initial_balance = int(command[2])
     except ValueError:
-        bot.reply_to(message, "❗️𝗜𝗻𝘃𝗮𝗹𝗶𝗱 𝗯𝗮𝗹𝗮𝗻𝗰𝗲 𝗮𝗺𝗼𝘂𝗻𝘁❗️")
+        bot.reply_to(message, "❗️𝗜𝗻𝘃𝗮𝗹𝗶𝗱 𝗯𝗮𝗹𝗮𝗻𝗰𝗲 𝗮𝗺𝗼𝘂𝗻𝘁❗️", parse_mode='Markdown')
         return
 
     # Add reseller to the resellers.json
     if reseller_id not in resellers:
         resellers[reseller_id] = initial_balance
         save_resellers(resellers)
-        bot.reply_to(message, f"➖ *𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗮𝗱𝗱𝗲𝗱 𝘀𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆* ✅\n\n*𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗨𝘀𝗲𝗿 𝗜𝗗* : {reseller_id}\n*𝗕𝗮𝗹𝗮𝗻𝗰𝗲* : {initial_balance} *Rs*\n\n⚡ *𝗣𝗢𝗪𝗘𝗥 𝗠𝗔𝗡𝗔𝗚𝗘𝗠𝗘𝗡𝗧 :* ⚡\n\n➖*𝗖𝗛𝗘𝗖𝗞 𝗬𝗢𝗨𝗥 𝗕𝗔𝗟𝗔𝗡𝗖𝗘*   :   `/balance` \n➖*𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗘 𝗡𝗘𝗪 𝗞𝗘𝗬*   :   `/genkey`", parse_mode='Markdown')
+        bot.reply_to(message, f"➖ *𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗮𝗱𝗱𝗲𝗱 𝘀𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆* ✅\n\n*𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗨𝘀𝗲𝗿 𝗜𝗗* : {reseller_id}\n*𝗕𝗮𝗹𝗮𝗻𝗰𝗲* : {initial_balance} *𝗥𝘀*\n\n⚡ *𝗣𝗢𝗪𝗘𝗥 𝗠𝗔𝗡𝗔𝗚𝗘𝗠𝗘𝗡𝗧 :* ⚡\n\n➖*𝗖𝗛𝗘𝗖𝗞 𝗬𝗢𝗨𝗥 𝗕𝗔𝗟𝗔𝗡𝗖𝗘*   :   `/balance` \n➖*𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗘 𝗡𝗘𝗪 𝗞𝗘𝗬*   :   `/genkey`", parse_mode='Markdown')
     else:
-        bot.reply_to(message, f"➖ 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 {reseller_id} 𝗮𝗹𝗿𝗲𝗮𝗱𝘆 𝗲𝘅𝗶𝘀𝘁𝘀", parse_mode='Markdown')
-
-# Reseller command to generate keys
-@bot.message_handler(commands=['genkey'])
-def generate_key(message):
-    user_id = str(message.chat.id)
-
-    # Syntax: /genkey <duration>
-    command = message.text.split()
-    if len(command) != 2:
-        bot.reply_to(message, "➖ *𝗨𝘀𝗮𝗴𝗲: /𝗴𝗲𝗻𝗸𝗲𝘆 <𝗱𝘂𝗿𝗮𝘁𝗶𝗼𝗻> \n\n⚙️ 𝘼𝙑𝘼𝙄𝙇𝘼𝘽𝙇𝙀 𝙆𝙀𝙔 '𝙨 & 𝘾𝙊𝙎𝙏 : \n➖ 𝟭𝗵𝗼𝘂𝗿 : 𝟯𝟬 Rs \n➖ 𝟭𝗱𝗮𝘆 : 𝟭𝟱𝟬 Rs\n➖ 𝟳𝗱𝗮𝘆𝘀 : 𝟰𝟱𝟬 Rs\n➖ 𝟭𝗺𝗼𝗻𝘁𝗵 : 𝟭𝟭𝟬𝟬 Rs\n\n➖ 𝗘𝗫𝗔𝗠𝗣𝗟𝗘 : /𝗴𝗲𝗻𝗸𝗲𝘆  𝟭𝗺𝗼𝗻𝘁𝗵*", parse_mode='Markdown')
-        return
-
-    duration = command[1].lower()
-    if duration not in KEY_COST:
-        bot.reply_to(message, "*𝗜𝗻𝘃𝗮𝗹𝗶𝗱 𝗱𝘂𝗿𝗮𝘁𝗶𝗼𝗻*", parse_mode='Markdown')
-        return
-
-    cost = KEY_COST[duration]
-
-    if user_id in admin_id:
-        key = create_random_key()  # Generate the key using the renamed function
-        keys[key] = {"duration": duration, "expiration_time": None}
-        save_keys()
-        response = f"➖ *𝗞𝗲𝘆 𝗴𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 𝘀𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆* ✅\n\n*𝗞𝗲𝘆* : `{key}`\n*𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻* : {duration}\n\n*𝗕𝗢𝗧 𝗟𝗶𝗡𝗞* : {escaped_bot_link}"
-
-    elif user_id in resellers:
-        if resellers[user_id] >= cost:
-            resellers[user_id] -= cost
-            save_resellers(resellers)
-
-            key = create_random_key()  # Generate the key using the renamed function
-            keys[key] = {"duration": duration, "expiration_time": None}
-            save_keys()
-            response = f"➖ *𝗞𝗲𝘆 𝗴𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 𝘀𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆* ✅\n\n*𝗞𝗲𝘆* : `{key}`\n*𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻* : {duration}\n𝗖𝗼𝘀𝘁: {cost} Rs\n𝗥𝗲𝗺𝗮𝗶𝗻𝗶𝗻𝗴 𝗯𝗮𝗹𝗮𝗻𝗰𝗲 : {resellers[user_id]} Rs"
-        else:
-            response = f"❗️*𝗜𝗻𝘀𝘂𝗳𝗳𝗶𝗰𝗶𝗲𝗻𝘁 𝗯𝗮𝗹𝗮𝗻𝗰𝗲 𝘁𝗼 𝗴𝗲𝗻𝗲𝗿𝗮𝘁𝗲* {duration} *𝗸𝗲𝘆*\n*𝗥𝗲𝗾𝘂𝗶𝗿𝗲𝗱 *: {cost} *Rs*\n*𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲* : {resellers[user_id]} Rs"
-    else:
-        response = "⛔️ *𝗔𝗰𝗰𝗲𝘀𝘀 𝗗𝗲𝗻𝗶𝗲𝗱 : 𝗔𝗱𝗺𝗶𝗻 𝗼𝗿 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗼𝗻𝗹𝘆 𝗰𝗼𝗺𝗺𝗮𝗻𝗱*"
-
-    bot.reply_to(message, response, parse_mode='Markdown')
+        bot.reply_to(message, f"➖ *𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 {reseller_id} 𝗮𝗹𝗿𝗲𝗮𝗱𝘆 𝗘𝘅𝗶𝘀𝘁 *", parse_mode='Markdown')
 
 # Reseller command to check balance
 @bot.message_handler(commands=['balance'])
@@ -225,7 +193,7 @@ def check_balance(message):
 
     if user_id in resellers:
         current_balance = resellers[user_id]
-        response = f"💰 *𝗬𝗼𝘂𝗿 𝗰𝘂𝗿𝗿𝗲𝗻𝘁 𝗯𝗮𝗹𝗮𝗻𝗰𝗲 𝗶𝘀* : {current_balance}."
+        response = f"💰 *𝗬𝗼𝘂𝗿 𝗰𝘂𝗿𝗿𝗲𝗻𝘁 𝗯𝗮𝗹𝗮𝗻𝗰𝗲 𝗶𝘀* : {current_balance} 𝗥𝘀 "
     else:
         response = "⛔️ *𝗔𝗰𝗰𝗲𝘀𝘀 𝗗𝗲𝗻𝗶𝗲𝗱 : 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗼𝗻𝗹𝘆 𝗰𝗼𝗺𝗺𝗮𝗻𝗱*"
 
@@ -250,7 +218,8 @@ def help_command(message):
 🏅 `/resellers` - *Inspect the elite reseller ranks!* 🎖️
 💰 `/addbalance <reseller_id> <amount>` - *Bestow wealth upon a reseller!* 💎
 🗑️ `/removereseller <reseller_id>` - *Erase a reseller’s existence!* ⚰️
-"""
+♻️ `/history` - *Check the Key Generation History!*
+""" 
         bot.reply_to(message, help_text, parse_mode='Markdown')
     except Exception as e:
         bot.reply_to(message, f"{str(e)}", parse_mode='Markdown')
@@ -258,7 +227,7 @@ def help_command(message):
 
 @bot.message_handler(func=lambda message: message.text == "🎟️ Redeem Key")
 def redeem_key_prompt(message):
-    bot.reply_to(message, "𝗣𝗹𝗲𝗮𝘀𝗲 𝘀𝗲𝗻𝗱 𝘆𝗼𝘂𝗿 𝗸𝗲𝘆:")
+    bot.reply_to(message, "*𝗣𝗹𝗲𝗮𝘀𝗲 𝘀𝗲𝗻𝗱 𝘆𝗼𝘂𝗿 𝗸𝗲𝘆 :*", parse_mode='Markdown')
     bot.register_next_step_handler(message, process_redeem_key)
 
 def process_redeem_key(message):
@@ -270,7 +239,7 @@ def process_redeem_key(message):
         if user_id in users:
             current_expiration = datetime.datetime.strptime(users[user_id], '%Y-%m-%d %H:%M:%S')
             if datetime.datetime.now() < current_expiration:
-                bot.reply_to(message, f"❕*𝗬𝗼𝘂 𝗮𝗹𝗿𝗲𝗮𝗱𝘆 𝗵𝗮𝘃𝗲 𝗮𝗰𝗰𝗲𝘀𝘀*❕", parse_mode='Markdown')
+                bot.reply_to(message, f"❕𝗬𝗼𝘂 𝗮𝗹𝗿𝗲𝗮𝗱𝘆 𝗵𝗮𝘃𝗲 *𝗮𝗰𝗰𝗲𝘀𝘀*❕", parse_mode='Markdown')
                 return
             else:
                 del users[user_id]  # Remove expired access
@@ -280,8 +249,10 @@ def process_redeem_key(message):
         duration = keys[key]["duration"]
         if duration == "1hour":
             expiration_time = add_time_to_current_date(hours=1)
-        elif duration == "1day":
-            expiration_time = add_time_to_current_date(days=1)
+        elif duration == "5hours":
+            expiration_time = add_time_to_current_date(hours=5)
+        elif duration == "1days":
+            expiration_time = add_time_to_current_date(days=1)    
         elif duration == "7days":
             expiration_time = add_time_to_current_date(days=7)
         elif duration == "1month":
@@ -317,8 +288,8 @@ def show_recent_logs(message):
             response = "No data found"
             bot.reply_to(message, response)
     else:
-        response = "‼️ 𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗲𝗥 𝗖𝗮𝗻 𝗿𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱 ‼️"
-        bot.reply_to(message, response)
+        response = "‼️ *𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗲𝗥 𝗖𝗮𝗻 𝗿𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱* ‼️"
+        bot.reply_to(message, response, parse_mode='Markdown')
 
 @bot.message_handler(commands=['start'])
 def start_command(message):
@@ -328,10 +299,13 @@ def start_command(message):
     myinfo_button = types.KeyboardButton("👤 My Info")
     redeem_button = types.KeyboardButton("🎟️ Redeem Key")
     markup.add(attack_button, myinfo_button, redeem_button)
-    bot.reply_to(message, "𝗪𝗲𝗹𝗰𝗼𝗺𝗲 𝘁𝗼 *𝗡𝗘𝗘𝗥𝗔𝗝 𝘅 𝗗𝗜𝗟𝗗𝗢𝗦™* 𝗯𝗼𝘁!", reply_markup=markup, parse_mode='Markdown')
-
-COOLDOWN_PERIOD = 60  # 1 minutes
-
+    bot.reply_to(message, "𝗪𝗲𝗹𝗰𝗼𝗺𝗲 𝘁𝗼 *𝗡𝗘𝗘𝗥𝗔𝗝 𝘅 𝗗𝗜𝗟𝗗𝗢𝗦™* 𝗯𝗼𝘁 !", reply_markup=markup, parse_mode='Markdown')
+    bot.send_message(
+        message.chat.id,
+        f"*➖𝗣𝗹𝗲𝗮𝘀𝗲 𝗦𝗲𝗹𝗲𝗰𝘁 𝗮𝗻 𝗼𝗽𝘁𝗶𝗼𝗻 𝗳𝗿𝗼𝗺 𝗯𝗲𝗹𝗼𝘄 👀* ",
+        parse_mode='Markdown'
+    )
+COOLDOWN_PERIOD = 120  # 1 minutes
 @bot.message_handler(func=lambda message: message.text == "🚀 Attack")
 def handle_attack(message):
     user_id = str(message.chat.id)
@@ -374,7 +348,7 @@ def process_attack_details(message):
             port = int(details[1])
             time = int(details[2])
             if time > 240:
-                response = "❗️𝗘𝗿𝗿𝗼𝗿 : 𝘂𝘀𝗲 𝗹𝗲𝘀𝘀𝘁𝗵𝗲𝗻 𝟮𝟰𝟬  𝘀𝗲𝗰𝗼𝗻𝗱𝘀❗️"
+                response = "❗️𝗘𝗿𝗿𝗼𝗿 : 𝘂𝘀𝗲 𝗹𝗲𝘀𝘀 𝘁𝗵𝗲𝗻 𝟮𝟰𝟬  𝘀𝗲𝗰𝗼𝗻𝗱𝘀❗️"
             else:
                 # Record and log the attack
                 record_command_logs(user_id, 'attack', target, port, time)
@@ -382,7 +356,7 @@ def process_attack_details(message):
                 full_command = f"./smokey {target} {port} {time} 1200"
                 username = message.chat.username or "No username"
                 # Send immediate response that the attack is being executed
-                response = f"𝗛𝗲𝗹𝗹𝗼 @{username},  𝗬𝗼𝘂𝗿 𝗔𝘁𝘁𝗮𝗰𝗸 𝗼𝗻  {target} : {port} 𝘄𝗶𝗹𝗹 𝗯𝗲 𝗳𝗶𝗻𝗶𝘀𝗵𝗲𝗱 𝗶𝗻 {time} 𝘀𝗲𝗰𝗼𝗻𝗱𝘀 . \n\n‼️ 𝗣𝗲𝗮𝗰𝗲𝗳𝘂𝗹𝗹𝘆 𝘄𝗮𝗶𝘁 𝗶𝗻 𝗣𝗟𝗔𝗡𝗘  / 𝗟𝗢𝗕𝗕𝗬 𝘄𝗶𝘁𝗵𝗼𝘂𝘁 𝘁𝗼𝘂𝗰𝗵𝗶𝗻𝗴 𝗮𝗻𝘆 𝗕𝘂𝘁𝘁𝗼𝗻 ‼️"
+                response = f"𝗛𝗲𝗹𝗹𝗼 @{username},  𝗬𝗼𝘂𝗿 𝗔𝘁𝘁𝗮𝗰𝗸 𝗼𝗻  {target} : {port} 𝘄𝗶𝗹𝗹 𝗯𝗲 𝗳𝗶𝗻𝗶𝘀𝗵𝗲𝗱 𝗶𝗻 {time} 𝘀𝗲𝗰𝗼𝗻𝗱𝘀 . \n\n‼️ 𝗣𝗲𝗮𝗰𝗲𝗳𝘂𝗹𝗹𝘆 𝘄𝗮𝗶𝘁 𝗶𝗻 𝗣𝗟𝗔𝗡𝗘  / 𝗟𝗢𝗕𝗕𝗬 𝘄𝗶𝘁𝗵𝗼𝘂𝘁 𝘁𝗼𝘂𝗰𝗵𝗶𝗻𝗴 𝗮𝗻𝘆 𝗕𝘂𝘁𝘁𝗼𝗻 ‼"
 
                 # Run attack asynchronously (this won't block the bot)
                 subprocess.Popen(full_command, shell=True)
@@ -403,8 +377,8 @@ def process_attack_details(message):
 def send_attack_finished_message(chat_id, target, port, time):
     """Notify the user that the attack is finished."""
     message = f"➖ 𝗔𝘁𝘁𝗮𝗰𝗸 𝗰𝗼𝗺𝗽𝗹𝗲𝘁𝗲𝗱 ! ✅"
-    bot.send_message(chat_id, message)   
-    
+    bot.send_message(chat_id, message) 
+
 @bot.message_handler(func=lambda message: message.text == "👤 My Info")
 def my_info(message):
     user_id = str(message.chat.id)
@@ -413,12 +387,12 @@ def my_info(message):
     # Determine the user's role and additional information
     if user_id in admin_id:
         role = "Admin"
-        key_expiration = "No access"
+        key_expiration = " ➖ "
         balance = "Not Applicable"  # Admins don’t have balances
     elif user_id in resellers:
         role = "Reseller"
         balance = resellers.get(user_id, 0)
-        key_expiration = "No access"  # Resellers may not have key-based access
+        key_expiration = " ➖ " 
     elif user_id in users:
         role = "User"
         key_expiration = users[user_id]  # Fetch expiration directly
@@ -427,21 +401,22 @@ def my_info(message):
         role = "Guest"
         key_expiration = "No active key"
         balance = "Not Applicable"
+    
+    escaped_username = username.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]')
+    escaped_key_expiration = key_expiration.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]')
 
-    # Format the response
     response = (
-        f"👤 𝗨𝗦𝗘𝗥 𝗜𝗡𝗙𝗢𝗥𝗠𝗔𝗧𝗜𝗢𝗡 👤\n\n"
-        f"ℹ️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲: @{username}\n"
-        f"🆔 𝗨𝘀𝗲𝗿𝗜𝗗: {user_id}\n"
-        f"🚹 𝗥𝗼𝗹𝗲: {role}\n"
-        f"🕘 𝗘𝘅𝗽𝗶𝗿𝗮𝘁𝗶𝗼𝗻: {key_expiration}\n"
-    )
-
+    f"👤 𝗨𝗦𝗘𝗥 𝗜𝗡𝗙𝗢𝗥𝗠𝗔𝗧𝗜𝗢𝗡 👤\n\n"
+    f"ℹ️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲 : @{escaped_username}\n"
+    f"🆔 𝗨𝘀𝗲𝗿𝗜𝗗 : {user_id}\n"
+    f"🚹 𝗥𝗼𝗹𝗲 : {role}\n"
+    f"🕘 𝗘𝘅𝗽𝗶𝗿𝗮𝘁𝗶𝗼𝗻 : {escaped_key_expiration}\n"
+    )   
     # Add balance info for resellers
     if role == "Reseller":
-        response += f"💰 𝗖𝗨𝗥𝗥𝗘𝗡𝗧 𝗕𝗔𝗟𝗔𝗡𝗖𝗘 : {balance}\n"
+        response += f"💰 *𝗖𝗨𝗥𝗥𝗘𝗡𝗧 𝗕𝗔𝗟𝗔𝗡𝗖𝗘* : {balance} 𝗥𝘀\n"
 
-    bot.reply_to(message, response)
+    bot.reply_to(message, response, parse_mode='Markdown')
     
 @bot.message_handler(commands=['users'])
 def list_authorized_users(message):
@@ -484,11 +459,11 @@ def remove_user(message):
         # Remove the user and save changes
         del users[target_user_id]
         save_users()
-        response = f"➖ 𝗨𝘀𝗲𝗿 {target_user_id} 𝗵𝗮𝘀 𝗯𝗲𝗲𝗻 𝘀𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗿𝗲𝗺𝗼𝘃𝗲𝗱"
+        response = f"➖ *𝗨𝘀𝗲𝗿 {target_user_id} 𝗵𝗮𝘀 𝗯𝗲𝗲𝗻 𝘀𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗿𝗲𝗺𝗼𝘃𝗲𝗱*"
     else:
-        response = f"➖ 𝗨𝘀𝗲𝗿 {target_user_id} 𝗶𝘀 𝗻𝗼𝘁 𝗶𝗻 𝘁𝗵𝗲 𝗮𝘂𝘁𝗵𝗼𝗿𝗶𝘇𝗲𝗱 𝘂𝘀𝗲𝗿𝘀 𝗹𝗶𝘀𝘁"
+        response = f"➖ *𝗨𝘀𝗲𝗿 {target_user_id} 𝗶𝘀 𝗻𝗼𝘁 𝗶𝗻 𝘁𝗵𝗲 𝗮𝘂𝘁𝗵𝗼𝗿𝗶𝘇𝗲𝗱 𝘂𝘀𝗲𝗿𝘀 𝗹𝗶𝘀𝘁*"
 
-    bot.reply_to(message, response)
+    bot.reply_to(message, response, parse_mode='Markdown')
     
 @bot.message_handler(commands=['resellers'])
 def show_resellers(message):
@@ -514,47 +489,119 @@ def show_resellers(message):
 
             # Add reseller details to the message
             resellers_info += (
-                f"➖  𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲 : {reseller_username}\n"
-                f"➖  𝗨𝘀𝗲𝗿𝗜𝗗 : {reseller_id}\n"
-                f"➖  𝗖𝗨𝗥𝗥𝗘𝗡𝗧 𝗕𝗔𝗟𝗔𝗡𝗖𝗘 : {balance} Rs\n\n"
+                f"➖  *𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲* : {reseller_username}\n"
+                f"➖  *𝗨𝘀𝗲𝗿𝗜𝗗* : {reseller_id}\n"
+                f"➖  *𝗖𝗨𝗥𝗥𝗘𝗡𝗧 𝗕𝗔𝗟𝗔𝗡𝗖𝗘* : {balance} Rs\n\n"
             )
     else:
-        resellers_info += " ➖ 𝗡𝗼 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿𝘀 𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲"
+        resellers_info += " ➖ *𝗡𝗼 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿𝘀 𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲*"
 
     # Send the resellers' information to the admin
-    bot.reply_to(message, resellers_info)
+    bot.reply_to(message, resellers_info, parse_mode='Markdown')
 
        
 @bot.message_handler(commands=['addbalance'])
 def add_balance(message):
-    # Check if the user is an admin
     user_id = str(message.chat.id)
-    
     if user_id in admin_id:
         try:
-            # Extract the reseller ID and amount from the message
             command_parts = message.text.split()
             if len(command_parts) != 3:
-                bot.reply_to(message, "*𝗨𝘀𝗮𝗴𝗲: /𝗮𝗱𝗱𝗯𝗮𝗹𝗮𝗻𝗰𝗲 <𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿_𝗶𝗱> <𝗮𝗺𝗼𝘂𝗻𝘁>*", parse_mode='Markdown')
+                bot.reply_to(message, "*➖ 𝗨𝘀𝗮𝗴𝗲: /𝗮𝗱𝗱𝗯𝗮𝗹𝗮𝗻𝗰𝗲 <𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿_𝗶𝗱> <𝗮𝗺𝗼𝘂𝗻𝘁>*", parse_mode='Markdown')
                 return
             
             reseller_id = command_parts[1]
             amount = float(command_parts[2])
             
-            # Check if the reseller exists
             if reseller_id not in resellers:
-                bot.reply_to(message, "𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗜𝗗 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱")
+                bot.reply_to(message, "Reseller ID not found.")
                 return
             
-            # Add the balance to the reseller's account
             resellers[reseller_id] += amount
-            bot.reply_to(message, f"✅ *𝗕𝗮𝗹𝗮𝗻𝗰𝗲 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗮𝗱𝗱𝗲𝗱 ✅\n\n𝗢𝗟𝗗 𝗕𝗔𝗟𝗔𝗡𝗖𝗘 : {amount} Rs\n𝗥𝗘𝗦𝗘𝗟𝗟𝗘𝗥 𝗜𝗗 : {reseller_id}\n𝗖𝗨𝗥𝗥𝗘𝗡𝗧 𝗨𝗣𝗗𝗔𝗧𝗘𝗗 𝗕𝗔𝗟𝗔𝗡𝗖𝗘 : {resellers[reseller_id]} Rs*", parse_mode='Markdown')
-            
+            save_resellers(resellers)
+            bot.reply_to(
+                message,
+                f"➖ *𝗕𝗮𝗹𝗮𝗻𝗰𝗲 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗔𝗱𝗱𝗲𝗱 !\n\n𝗢𝗹𝗱 𝗕𝗮𝗹𝗮𝗻𝗰𝗲 : {resellers[reseller_id] - amount} 𝗥𝘀\n𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿'𝘀 𝗨𝘀𝗲𝗿𝗜𝗗 : {reseller_id}\n𝗨𝗽𝗱𝗮𝘁𝗲𝗱 𝗡𝗲𝘄 𝗕𝗮𝗹𝗮𝗻𝗰𝗲 : {resellers[reseller_id]} 𝗥𝘀\n\n➖𝗞𝗜𝗡𝗗𝗟𝗬 𝗖𝗛𝗘𝗖𝗞 𝗬𝗢𝗨𝗥 𝗨𝗣𝗗𝗔𝗧𝗘𝗗 𝗕𝗔𝗟𝗔𝗡𝗖𝗘* : `/balance`",
+                parse_mode='Markdown'
+            )
         except ValueError:
-            bot.reply_to(message, "𝗜𝗻𝘃𝗮𝗹𝗶𝗱 𝗮𝗺𝗼𝘂𝗻𝘁")
+            bot.reply_to(message, "Invalid amount.")
     else:
         bot.reply_to(message, "‼️ *𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗲𝗥 𝗖𝗮𝗻 𝗿𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱* ‼️", parse_mode='Markdown')
-        
+
+
+@bot.message_handler(commands=['genkey'])
+def generate_key(message):
+    user_id = str(message.chat.id)
+
+    # Syntax: /genkey <duration>
+    command = message.text.split()
+    if len(command) != 2:
+        bot.reply_to(
+            message,
+            "➖ 𝗨𝘀𝗮𝗴𝗲: /𝗴𝗲𝗻𝗸𝗲𝘆 <𝗱𝘂𝗿𝗮𝘁𝗶𝗼𝗻> \n\n⚙️ 𝘼𝙑𝘼𝙄𝙇𝘼𝘽𝙇𝙀 𝙆𝙀𝙔 '𝙨 & 𝘾𝙊𝙎𝙏 : \n     ➖ 𝟭𝗵𝗼𝘂𝗿 : 𝟯𝟬 𝗥𝘀    { `/genkey 1hour` }\n     ➖ 𝟱𝗵𝗼𝘂𝗿𝘀 : 𝟴𝟬 𝗥𝘀    { `/genkey 5hours` }\n     ➖ 𝟭𝗱𝗮𝘆 : 𝟭𝟱𝟬 𝗥𝘀    { `/genkey 1day` }\n     ➖ 𝟳𝗱𝗮𝘆𝘀 : 𝟲𝟬𝟬 𝗥𝘀    { `/genkey 7days` }\n     ➖ 𝟭𝗺𝗼𝗻𝘁𝗵 : 𝟭𝟱𝟬𝟬 𝗥𝘀   { `/genkey 1month` } \n\n                  ‼️  𝗧𝗔𝗣 𝗧𝗢 𝗖𝗢𝗣𝗬  ‼️",
+            parse_mode='Markdown'
+        )
+        return
+
+    duration = command[1].lower()
+    if duration not in KEY_COST:
+        bot.reply_to(message, "*❌ Invalid duration specified*", parse_mode='Markdown')
+        return
+
+    cost = KEY_COST[duration]
+
+    if user_id in admin_id:
+        key = create_random_key()  # Generate the key using the renamed function
+        keys[key] = {"duration": duration, "expiration_time": None}
+        save_keys()
+
+        # Log the generated key to history
+        with open("key_history.txt", "a") as history_file:
+            username = message.chat.username or f"UserID: {user_id}"
+            history_file.write(f"➖ 𝗞𝗘𝗬 : {key}\n➖ 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗘𝗗 𝗕𝗬 𝗢𝗪𝗡𝗘𝗥 : @{username}\n➖ 𝗗𝗨𝗥𝗔𝗧𝗜𝗢𝗡 𝗢𝗙 𝗞𝗘𝗬 : {duration}\n\n")
+
+        response = (
+            f"➖ *𝗞𝗘𝗬 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆* ✅\n\n"
+            f"*𝗞𝗘𝗬* : `{key}`\n"
+            f"*𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻* : {duration}\n\n"
+            f"*𝗕𝗼𝘁 𝗟𝗶𝗻𝗸* : {escaped_bot_link}"
+        )
+    elif user_id in resellers:
+        current_balance = resellers.get(user_id, 0)  # Safely get reseller balance
+        if current_balance >= cost:
+            resellers[user_id] -= cost
+            save_resellers(resellers)
+
+            key = create_random_key()  # Generate the key using the renamed function
+            keys[key] = {"duration": duration, "expiration_time": None}
+            save_keys()
+
+            # Log the generated key to history
+            with open("key_history.txt", "a") as history_file:
+                username = message.chat.username or f"UserID: {user_id}"
+                history_file.write(f"➖ 𝗞𝗘𝗬 : {key}\n➖ 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗘𝗗 𝗕𝗬 𝗥𝗘𝗦𝗘𝗟𝗟𝗘𝗥 : @{username}\n➖ 𝗗𝗨𝗥𝗔𝗧𝗜𝗢𝗡 𝗢𝗙 𝗞𝗘𝗬 : {duration}\n\n")
+
+            response = (
+                f"➖ *𝗞𝗘𝗬 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆* ✅\n\n"
+                f"*𝗞𝗘𝗬* : `{key}`\n"
+                f"*𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻* : {duration}\n"
+                f"*𝗕𝗮𝗹𝗮𝗻𝗰𝗲 𝗗𝗲𝗱𝘂𝗰𝘁𝗲𝗱* : {cost} Rs\n"
+                f"*𝗥𝗲𝗺𝗮𝗶𝗻𝗶𝗻𝗴 𝗕𝗮𝗹𝗮𝗻𝗰𝗲* : {resellers[user_id]} Rs\n\n"
+                f"*𝗕𝗼𝘁 𝗟𝗶𝗻𝗸* : {escaped_bot_link}"
+            )
+        else:
+            response = (
+                f"*➖ 𝗜𝗻𝘀𝘂𝗳𝗳𝗶𝗰𝗶𝗲𝗻𝘁 𝗕𝗮𝗹𝗮𝗻𝗰𝗲 𝘁𝗼 𝗴𝗲𝗻𝗲𝗿𝗮𝘁𝗲 {duration} 𝗞𝗲𝘆 *\n"
+                f"*𝗥𝗲𝗾𝘂𝗶𝗿𝗲𝗱 𝗕𝗮𝗹𝗮𝗻𝗰𝗲*: {cost} Rs\n"
+                f"*𝗥𝗲𝗺𝗮𝗶𝗻𝗶𝗻𝗴 𝗕𝗮𝗹𝗮𝗻𝗰𝗲*: {current_balance} Rs"
+            )
+    else:
+        response = "⛔️ *𝗔𝗰𝗰𝗲𝘀𝘀 𝗗𝗲𝗻𝗶𝗲𝗱 : 𝗢𝘄𝗡𝗲𝗿 | 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗢𝗻𝗹𝘆 𝗖𝗼𝗺𝗺𝗮𝗻𝗱*"
+
+    bot.reply_to(message, response, parse_mode='Markdown')
+
+
 @bot.message_handler(commands=['removereseller'])
 def remove_reseller(message):
     # Check if the user is an admin
@@ -565,7 +612,7 @@ def remove_reseller(message):
             # Extract the reseller ID from the message
             command_parts = message.text.split()
             if len(command_parts) != 2:
-                bot.reply_to(message, "*𝗨𝘀𝗮𝗴𝗲: /𝗿𝗲𝗺𝗼𝘃𝗲𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 <𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿_𝗶𝗱>*", parse_mode='Markdown')
+                bot.reply_to(message, "➖ 𝗨𝘀𝗮𝗴𝗲: /𝗿𝗲𝗺𝗼𝘃𝗲𝗿𝗲𝘀𝗲𝗹𝗹𝗲𝗿 <𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿_𝗶𝗱>")
                 return
             
             reseller_id = command_parts[1]
@@ -577,19 +624,100 @@ def remove_reseller(message):
             
             # Remove the reseller
             del resellers[reseller_id]
-            bot.reply_to(message, f"*𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 {reseller_id} 𝗵𝗮𝘀 𝗯𝗲𝗲𝗻 𝗿𝗲𝗺𝗼𝘃𝗲𝗱 𝘀𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆*", parse_mode='Markdown')
+            
+            # Save changes to resellers.json
+            save_resellers(resellers)
+            
+            bot.reply_to(
+                message,
+                f"*𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 {reseller_id} 𝗵𝗮𝘀 𝗯𝗲𝗲𝗻 𝗿𝗲𝗺𝗼𝘃𝗲𝗱 𝘀𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆*",
+                parse_mode='Markdown'
+            )
         
-        except ValueError:
-            bot.reply_to(message, "*𝗣𝗹𝗲𝗮𝘀𝗲 𝗽𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗜𝗗*")
+        except Exception as e:
+            bot.reply_to(
+                message,
+                f"*𝗣𝗹𝗲𝗮𝘀𝗲 𝗽𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗥𝗲𝘀𝗲𝗹𝗹𝗲𝗿 𝗜𝗗* {str(e)}*",
+                parse_mode='Markdown'
+            )
     else:
-        bot.reply_to(message, "‼ *𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗲𝗥 𝗖𝗮𝗻 𝗿𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱 ‼*", parse_mode='Markdown')
+        bot.reply_to(
+            message,
+            "‼ *𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗲𝗥 𝗖𝗮𝗻 𝗿𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱 ‼",
+            parse_mode='Markdown'
+        )
+
+def some_function():
+    global keys  # Declare 'keys' as global at the start
+    if 'some_key' not in keys:
+        keys['some_key'] = 'some_value'
+
+# Function to delete expired keys from keys.json
+def delete_expired_keys():
+    global keys  # Declare 'keys' as global at the start of the function
+
+    current_time = datetime.datetime.now()
+    updated_keys = {
+        key: value for key, value in keys.items()
+        if value["expiration_time"] is None or datetime.datetime.strptime(value["expiration_time"], '%Y-%m-%d %H:%M:%S') > current_time
+    }
+
+    # Check if any keys were removed
+    if len(updated_keys) < len(keys):
+        keys = updated_keys  # Update the global 'keys' variable
+        save_keys()
+
+
+import os
+
+# Add a new command to send the history file
+@bot.message_handler(commands=['history'])
+def send_history_file(message):
+    user_id = str(message.chat.id)
     
+    # Ensure only admins can use this command
+    if user_id not in admin_id:
+        bot.reply_to(
+            message,
+            "‼️ *𝗢𝗻𝗹𝘆 𝗕𝗼𝗧 𝗢𝗪𝗡𝗘𝗥 𝗖𝗮𝗻 𝗥𝘂𝗻 𝗧𝗵𝗶𝘀 𝗖𝗼𝗺𝗺𝗮𝗻𝗱* ‼️",
+            parse_mode='Markdown'
+        )
+        return
+
+    # Ensure the history file exists, create it if not
+    try:
+        if not os.path.exists("key_history.txt"):
+            with open("key_history.txt", "w") as file:
+                file.write("")  # Create an empty file
+            bot.reply_to(message, "*📄 𝗞𝗘𝗬 𝗛𝗶𝘀𝘁𝗼𝗿𝘆 𝗙𝗶𝗹𝗲 𝘄𝗮𝘀 𝗺𝗶𝘀𝘀𝗶𝗻𝗴, 𝘀𝗼 𝗮 𝗻𝗲𝘄 𝗙𝗶𝗹𝗲 𝘄𝗮𝘀 𝗴𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 👍*", parse_mode='Markdown')
+
+        # Check if the file is empty or has content
+        if os.stat("key_history.txt").st_size > 0:
+            with open("key_history.txt", "rb") as file:
+                bot.reply_to(message, "*📂 𝗞𝗘𝗬 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗜𝗢𝗡 𝗛𝗜𝗦𝗧𝗢𝗥𝗬 𝗙𝗢𝗨𝗡𝗗*", parse_mode='Markdown')
+                bot.send_document(message.chat.id, file)
+        else:
+            bot.reply_to(message, "*📂 𝗡𝗢 𝗞𝗘𝗬 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗜𝗢𝗡 𝗛𝗜𝗦𝗧𝗢𝗥𝗬 𝗙𝗢𝗨𝗡𝗗*", parse_mode='Markdown')
+    except Exception as e:
+        bot.reply_to(message, f"{e}")
+
+
+# Schedule periodic cleanup of expired keys
+def schedule_key_cleanup():
+    while True:
+        delete_expired_keys()
+        time.sleep(3600)  # Run every hour
+
+# Start the cleanup thread when the script runs
 if __name__ == "__main__":
     load_data()
+    
+    # Start a background thread for key cleanup
+    threading.Thread(target=schedule_key_cleanup, daemon=True).start()
+
     while True:
         try:
             bot.polling(none_stop=True)
         except Exception as e:
             print(e)
-            # Add a small delay to avoid rapid looping in case of persistent errors
-        time.sleep(1)
+            time.sleep(1)
