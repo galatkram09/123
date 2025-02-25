@@ -70,10 +70,10 @@ def save_keys():
     with open(KEY_FILE, "w") as file:
         json.dump(keys, file)
 
-def create_random_key(length=15):
+def create_random_key(length=18):
     characters = string.ascii_letters + string.digits
     random_key = ''.join(random.choice(characters) for _ in range(length))
-    custom_key = f"VIP-MoY-{random_key}"
+    custom_key = f"{random_key}"
     return custom_key
 
 def add_time_to_current_date(years=0, months=0, days=0, hours=0, minutes=0, seconds=0):
